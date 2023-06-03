@@ -13,7 +13,7 @@ class Users(db.Model):
     first_name = db.Column(db.String(20), nullable=False)
     last_name = db.Column(db.String(20), nullable=False)
     email = db.Column(db.String(50), unique=True, nullable=False)
-    password = db.Column(db.String(50), nullable=False)
+    password = db.Column(db.String(250), nullable=False)
 
     favourites_people = db.relationship("Favourites_people", backref="users", lazy=True)
     favourites_vehicles = db.relationship(

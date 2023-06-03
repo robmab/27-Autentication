@@ -10,6 +10,9 @@ from utils import APIException, generate_sitemap
 from admin import setup_admin
 from models import db, Users, Favourites_people, People, Vehicles, Favourites_vehicles, Favourites_planets, Planets
 
+from flask_jwt_extended import create_access_token, get_jwt_identity, jwt_required, JWTManager
+from flask_bcrypt import Bcrypt
+
 # from models import Person
 
 app = Flask(__name__)
@@ -28,7 +31,15 @@ db.init_app(app)
 CORS(app)
 setup_admin(app)
 
+# Setup the Flask-JWT-Extended extension
+app.config["JWT_SECRET_KEY"] = "unimade"  # Change this!
+jwt = JWTManager(app)
+
+# Setup B-crypt
+bcrypt = Bcrypt(app)
+
 # Handle/serialize errors like a JSON object
+
 
 @app.errorhandler(APIException)
 def handle_invalid_usage(error):
@@ -36,12 +47,90 @@ def handle_invalid_usage(error):
 
 # generate sitemap with all your endpoints
 
+
 @app.route('/')
 def sitemap():
     return generate_sitemap(app)
 
+# SIGN UP
+
+
+@app.route('/signup', methods=['POST'])
+def signup():
+    user_name = request.json.get("user_name", None)
+    first_name = request.json.get("first_name", None)
+    last_name = request.json.get("last_name", None)
+    email = request.json.get("email", None)
+    password = request.json.get("password", None)
+
+    # Check if properties of user exist
+    if user_name is None:
+        return jsonify({"msg": "User name not found"}), 400
+    if first_name is None:
+        return jsonify({"msg": "First name not found"}), 400
+    if last_name is None:
+        return jsonify({"msg": "Last name not found"}), 400
+    if email is None:
+        return jsonify({"msg": "Email not found"}), 400
+    if password is None:
+        return jsonify({"msg": "Password not found"}), 400
+
+    # Check if username or email already exist in Users
+    user = Users.query.filter((Users.email == email) | (
+        Users.user_name == user_name)).first()
+    if user != None:
+        return jsonify({"msg": "Email or username already exist"}), 401
+
+    # Encrypt password
+    pw_hash = bcrypt.generate_password_hash(password).decode("utf-8")
+
+    user = Users(user_name=user_name, first_name=first_name,
+                 last_name=last_name, email=email, password=pw_hash)
+
+    db.session.add(user)
+    db.session.commit()
+
+    return jsonify({"msg": "Ok. User created."}), 200
+
+# LOGIN
+
+
+@app.route('/login', methods=['POST'])
+def login():
+    r = request.get_json(force=True)
+
+    # Check password & username|email
+    if "user_name" in r:
+        user = Users.query.filter_by(user_name=r["user_name"]).first()
+    elif "email" in r:
+        user = Users.query.filter_by(email=r["email"]).first()
+    else:
+        return jsonify({"msg": "Username or email not found"}), 400
+
+    if user is None:
+        return jsonify({"msg": "User not found on database"}), 401
+
+    if "password" not in r:
+        return jsonify({"msg": "Password not found"}), 400
+
+    # Check password
+    check_password = bcrypt.check_password_hash(user.password, r["password"])
+    if not check_password:
+        return jsonify({"msg": "Incorrect password"}), 401
+
+    # Create Access Token
+    access_token = create_access_token(identity=user.id)
+
+    response_body = {"msg": "Ok",
+                     "token": access_token,
+                     "user_id": user.id}
+
+    return jsonify(response_body), 200
+
 # GET ALL ENDPOINTS
 # USERS
+
+
 @app.route('/users', methods=['GET'])
 def users_get_all():
     response_body = {}
@@ -49,10 +138,11 @@ def users_get_all():
 
     if not users:
         return jsonify(response_body), 204  # No content
-    
+
     response_body["msg"] = "Ok"
     response_body["response"] = users
     return jsonify(response_body), 200
+
 
 @app.route('/users/<int:id>', methods=['GET'])
 def users_get_one(id):
@@ -60,14 +150,16 @@ def users_get_one(id):
     user = Users.query.get(id)
 
     if user == None:
-        response_body["msg"]=f"Not found. User with id {id} doesn't exist"
+        response_body["msg"] = f"Not found. User with id {id} doesn't exist"
         return jsonify(response_body), 404
 
-    response_body["msg"]="Ok"
-    response_body["response"]= user.serialize()
+    response_body["msg"] = "Ok"
+    response_body["response"] = user.serialize()
     return jsonify(response_body), 200
 
 # PEOPLE
+
+
 @app.route('/people', methods=['GET'])
 def people_get_all():
     response_body = {}
@@ -76,9 +168,10 @@ def people_get_all():
     if not people:
         return jsonify(response_body), 204  # No content
 
-    response_body["msg"]="Ok"
-    response_body["response"]=people
+    response_body["msg"] = "Ok"
+    response_body["response"] = people
     return jsonify(response_body), 200
+
 
 @app.route('/people/<int:id>', methods=['GET'])
 def people_get_one(id):
@@ -120,7 +213,6 @@ def vehicles_get_one(id):
     if vehicle == None:
         response_body["msg"] = f"Vehicle with id {id} doesn't exist"
         return jsonify(response_body), 404
-    
 
     response_body["msg"] = "Ok"
     response_body["response"] = vehicle.serialize()
@@ -194,10 +286,10 @@ def people_post():
         response_body["msg"] = "Eye color not found"
         return jsonify(response_body), 400
 
-    if not "birth_year" in r :
+    if not "birth_year" in r:
         response_body["msg"] = "Birth year not found"
-        return jsonify(response_body), 400 
-    
+        return jsonify(response_body), 400
+
     # Check types
     if type(r["name"]) != str:
         response_body["msg"] = "Name must be a string"
@@ -210,11 +302,11 @@ def people_post():
     if type(r["eye_color"]) != str:
         response_body["msg"] = "Eye color must be a string"
         return jsonify(response_body), 400
-    
+
     if type(r["gender"]) != str:
         response_body["msg"] = "Gender must be a string"
         return jsonify(response_body), 400
-    
+
     if type(r["hair_color"]) != str:
         response_body["msg"] = "Hair color must be a string"
         return jsonify(response_body), 400
@@ -222,15 +314,15 @@ def people_post():
     if type(r["height"]) != int:
         response_body["msg"] = "Height must be a integer"
         return jsonify(response_body), 400
-    
+
     if type(r["mass"]) != int:
         response_body["msg"] = "Mass must be a integer"
         return jsonify(response_body), 400
 
     # Check unique name
     filter_name = People.query.filter_by(
-        name=r["name"]).first()  
-    
+        name=r["name"]).first()
+
     if filter_name != None:
         response_body["msg"] = "Name must be unique"
         return jsonify(response_body), 400
@@ -246,6 +338,8 @@ def people_post():
     return jsonify(response_body), 200
 
 # POST VEHICLES
+
+
 @app.route('/vehicles', methods=['POST'])
 def vehicles_post():
 
@@ -306,7 +400,7 @@ def vehicles_post():
     if type(r["name"]) != str:
         response_body["msg"] = "Name must be a string"
         return jsonify(response_body), 400
-    
+
     if type(r["cargo_capacity"]) != int:
         response_body["msg"] = "Cargo capacity must be a integer"
         return jsonify(response_body), 400
@@ -318,11 +412,11 @@ def vehicles_post():
     if type(r["cost_in_credits"]) != int:
         response_body["msg"] = "Cost in credits must be a integer"
         return jsonify(response_body), 400
-    
+
     if type(r["crew"]) != int:
         response_body["msg"] = "Crew must be a integer"
         return jsonify(response_body), 400
-    
+
     if type(r["length"]) != int:
         response_body["msg"] = "Length must be a integer"
         return jsonify(response_body), 400
@@ -330,7 +424,7 @@ def vehicles_post():
     if type(r["manufacturer"]) != str:
         response_body["msg"] = "Manufacturer must be a string"
         return jsonify(response_body), 400
-    
+
     if type(r["max_atmosphering_speed"]) != int:
         response_body["msg"] = "Max atmosphering speed capacity must be a integer"
         return jsonify(response_body), 400
@@ -338,7 +432,7 @@ def vehicles_post():
     if type(r["model"]) != str:
         response_body["msg"] = "Model must be a string"
         return jsonify(response_body), 400
-    
+
     if type(r["vehicle_class"]) != str:
         response_body["msg"] = "Vehicle class must be a string"
         return jsonify(response_body), 400
@@ -346,16 +440,15 @@ def vehicles_post():
     if type(r["passengers"]) != int:
         response_body["msg"] = "Passengers capacity must be a integer"
         return jsonify(response_body), 400
-    
+
     # Check unique name
     filter_name = Vehicles.query.filter_by(
-        name=r["name"]).first() 
-    
+        name=r["name"]).first()
+
     if filter_name != None:
         response_body["msg"] = "Name must be unique"
         return jsonify(response_body), 400
-    
-   
+
     # Insert in table
     vehicle = Vehicles(name=r["name"], model=r["model"], vehicle_class=r["vehicle_class"],
                        manufacturer=r["manufacturer"], cost_in_credits=r["cost_in_credits"],
@@ -423,7 +516,7 @@ def planets_post():
     if type(r["name"]) != str:
         response_body["msg"] = "Name must be a string"
         return jsonify(response_body), 400
-    
+
     if type(r["climate"]) != str:
         response_body["msg"] = "Climate must be a string"
         return jsonify(response_body), 400
@@ -447,22 +540,21 @@ def planets_post():
     if type(r["population"]) != int:
         response_body["msg"] = "Population must be a integer"
         return jsonify(response_body), 400
-    
+
     if type(r["rotation_period"]) != int:
         response_body["msg"] = "Rotation period must be a integer"
         return jsonify(response_body), 400
-    
+
     if type(r["surface_water"]) != int:
         response_body["msg"] = "Surface water must be a integer"
         return jsonify(response_body), 400
 
     # Check unique name
     filter_name = Planets.query.filter_by(
-        name=r["name"]).first()  
+        name=r["name"]).first()
     if filter_name != None:
         response_body["msg"] = "Name must be unique"
         return jsonify(response_body), 400
-    
 
     planet = Planets(name=r["name"], climate=r["climate"], diameter=r["diameter"],
                      gravity=r["gravity"], orbital_period=r["orbital_period"],
@@ -494,6 +586,8 @@ def delete_people(id):
     return jsonify(response_body), 200
 
 # DELETE VEHICLES
+
+
 @app.route('/vehicles/<int:id>', methods=['DELETE'])
 def delete_vehicles(id):
     response_body = {}
@@ -511,6 +605,8 @@ def delete_vehicles(id):
     return jsonify(response_body), 200
 
 # DELETE PLANETS
+
+
 @app.route('/planets/<int:id>', methods=['DELETE'])
 def delete_planets(id):
     response_body = {}
@@ -549,12 +645,12 @@ def modify_people(id):
 
         # Check unique name
         filter_name = People.query.filter_by(
-        name=r["name"]).first()
+            name=r["name"]).first()
 
         if filter_name != None:
             response_body["msg"] = f"Name {r['name']} already exist"
             return jsonify(response_body), 400
-        
+
         person.name = r["name"]
 
     if "birth_year" in r:
@@ -568,37 +664,36 @@ def modify_people(id):
         if type(r["eye_color"]) != str:
             response_body["msg"] = f"Eye color {r['eye_color']} must be a string"
             return jsonify(response_body), 400
-        
+
         person.eye_color = r["eye_color"]
 
     if "gender" in r:
         if type(r["gender"]) != str:
             response_body["msg"] = f"Gender {r['gender']} must be a string"
             return jsonify(response_body), 400
-        
+
         person.gender = r["gender"]
 
     if "hair_color" in r:
         if type(r["hair_color"]) != str:
             response_body["msg"] = f"Hair color {r['hair_color']} must be a string"
             return jsonify(response_body), 400
-        
+
         person.hair_color = r["hair_color"]
 
     if "height" in r:
         if type(r["height"]) != int:
             response_body["msg"] = f"Height {r['height']} must be a integer"
             return jsonify(response_body), 400
-        
+
         person.height = r["height"]
 
     if "mass" in r:
         if type(r["mass"]) != int:
             response_body["msg"] = f"Mass {r['mass']} must be a integer"
             return jsonify(response_body), 400
-        
-        person.mass = r["mass"]
 
+        person.mass = r["mass"]
 
     db.session.commit()
 
@@ -624,22 +719,22 @@ def modify_vehicles(id):
         if type(r["name"]) != str:
             response_body["msg"] = f"Name {r['name']} must be a string"
             return jsonify(response_body), 400
-        
+
         # Check unique name
         filter_name = Vehicles.query.filter_by(
-        name=r["name"]).first()
-    
+            name=r["name"]).first()
+
         if filter_name != None:
             response_body["msg"] = f"Name {r['name']} already exist"
             return jsonify(response_body), 400
-        
+
         vehicle.name = r["name"]
 
     if "cargo_capacity" in r:
         if type(r["cargo_capacity"]) != int:
             response_body["msg"] = f"Cargo capacity {r['cargo_capacity']} must be a integer"
             return jsonify(response_body), 400
-        
+
         vehicle.cargo_capacity = r["cargo_capacity"]
 
     if "consumables" in r:
@@ -653,56 +748,56 @@ def modify_vehicles(id):
         if type(r["cost_in_credits"]) != int:
             response_body["msg"] = f"Cost in credits {r['cost_in_credits']} must be a integer"
             return jsonify(response_body), 400
-        
+
         vehicle.cost_in_credits = r["cost_in_credits"]
 
     if "crew" in r:
         if type(r["crew"]) != int:
             response_body["msg"] = f"Crew {r['crew']} must be a integer"
             return jsonify(response_body), 400
-        
+
         vehicle.crew = r["crew"]
 
     if "length" in r:
         if type(r["length"]) != int:
             response_body["msg"] = f"Length {r['length']} must be a integer"
             return jsonify(response_body), 400
-        
+
         vehicle.length = r["length"]
 
     if "manufacturer" in r:
         if type(r["manufacturer"]) != str:
             response_body["msg"] = f"Manufacturer {r['manufacturer']} must be a string"
             return jsonify(response_body), 400
-        
+
         vehicle.manufacturer = r["manufacturer"]
 
     if "max_atmosphering_speed" in r:
         if type(r["max_atmosphering_speed"]) != int:
             response_body["msg"] = f"Max atmosphering speed {r['max_atmosphering_speed']} must be a integer"
             return jsonify(response_body), 400
-        
+
         vehicle.max_atmosphering_speed = r["max_atmosphering_speed"]
 
     if "model" in r:
         if type(r["model"]) != str:
             response_body["msg"] = f"Model {r['model']} must be a string"
             return jsonify(response_body), 400
-        
+
         vehicle.model = r["model"]
 
     if "passengers" in r:
         if type(r["passengers"]) != int:
             response_body["msg"] = f"Passengers {r['passengers']} must be a integer"
             return jsonify(response_body), 400
-        
+
         vehicle.passengers = r["passengers"]
 
     if "vehicle_class" in r:
         if type(r["vehicle_class"]) != str:
             response_body["msg"] = f"Vehicle class {r['vehicle_class']} must be a string"
             return jsonify(response_body), 400
-        
+
         vehicle.vehicle_class = r["vehicle_class"]
 
     db.session.commit()
@@ -711,6 +806,8 @@ def modify_vehicles(id):
     return jsonify(response_body), 200
 
 # MODIFY PLANETS
+
+
 @app.route('/planets/<int:id>', methods=['PUT'])
 def modify_planets(id):
     response_body = {}
@@ -728,11 +825,11 @@ def modify_planets(id):
         if type(r["name"]) != str:
             response_body["msg"] = f"Name class {r['name']} must be a string"
             return jsonify(response_body), 400
-        
+
         # Check unique name
         filter_name = Planets.query.filter_by(
-        name=r["name"]).first()  
-    
+            name=r["name"]).first()
+
         if filter_name != None:
             response_body["msg"] = f"Name {r['name']} already exist"
             return jsonify(response_body), 400
@@ -743,42 +840,42 @@ def modify_planets(id):
         if type(r["climate"]) != str:
             response_body["msg"] = f"Climate class {r['climate']} must be a string"
             return jsonify(response_body), 400
-        
+
         planet.climate = r["climate"]
 
     if "diameter" in r:
         if type(r["diameter"]) != int:
             response_body["msg"] = f"Diameter class {r['diameter']} must be a integer"
             return jsonify(response_body), 400
-        
+
         planet.diameter = r["diameter"]
 
     if "gravity" in r:
         if type(r["gravity"]) != str:
             response_body["msg"] = f"Gravity class {r['gravity']} must be a string"
             return jsonify(response_body), 400
-        
+
         planet.gravity = r["gravity"]
 
     if "orbital_period" in r:
         if type(r["orbital_period"]) != int:
             response_body["msg"] = f"Orbital period class {r['orbital_period']} must be a integer"
             return jsonify(response_body), 400
-        
+
         planet.orbital_period = r["orbital_period"]
 
     if "population" in r:
         if type(r["population"]) != int:
             response_body["msg"] = f"Population class {r['population']} must be a integer"
             return jsonify(response_body), 400
-        
+
         planet.population = r["population"]
 
     if "rotation_period" in r:
         if type(r["rotation_period"]) != int:
             response_body["msg"] = f"Rotation period class {r['rotation_period']} must be a integer"
             return jsonify(response_body), 400
-        
+
         planet.rotation_period = r["rotation_period"]
 
     if "surface_water" in r:
@@ -792,7 +889,7 @@ def modify_planets(id):
         if type(r["terrain"]) != str:
             response_body["msg"] = f"Terrain class {r['terrain']} must be a string"
             return jsonify(response_body), 400
-        
+
         planet.terrain = r["terrain"]
 
     db.session.commit()
@@ -806,7 +903,7 @@ def modify_planets(id):
 def get_favourites(id):
     response_body = {}
 
-    user =  Users.query.get(id)
+    user = Users.query.get(id)
     if user == None:
         response_body["msg"] = f"Not Found. User with id {id} doesn't exist"
         return jsonify(response_body), 404
@@ -833,7 +930,7 @@ def get_favourites(id):
 
 # POST PERSON FAVORITE
 @app.route('/favorite/people/<int:people_id>/<int:user_id>', methods=['POST'])
-def post_favourite_person(people_id,user_id):
+def post_favourite_person(people_id, user_id):
     response_body = {}
 
     # Check if User exists
@@ -841,21 +938,22 @@ def post_favourite_person(people_id,user_id):
     if user == None:
         response_body["msg"] = f"User with id {user_id} doesn't exist"
         return jsonify(response_body), 404
-    
+
     # Check if Person exists
     person = People.query.get(people_id)
     if person == None:
         response_body["msg"] = f"Person with id {people_id} doesn't exist"
         return jsonify(response_body), 404
-    
+
     # Check if person favourites already exist with the same user.
-    person_user= Favourites_people.query.filter_by(user_id=user_id,person_id=people_id).first()  # AND FILTER
+    person_user = Favourites_people.query.filter_by(
+        user_id=user_id, person_id=people_id).first()  # AND FILTER
 
     if person_user != None:
         response_body["msg"] = f"User {user.user_name} with favorite person {person.name} already exist"
         return jsonify(response_body), 400
 
-    favourite=Favourites_people(user_id=user_id,person_id=people_id)
+    favourite = Favourites_people(user_id=user_id, person_id=people_id)
 
     db.session.add(favourite)
     db.session.commit()
@@ -864,8 +962,10 @@ def post_favourite_person(people_id,user_id):
     return jsonify(response_body), 200
 
 # POST VEHICLE FAVORITE
+
+
 @app.route('/favorite/vehicle/<int:vehicle_id>/<int:user_id>', methods=['POST'])
-def post_favourite_vehicle(vehicle_id,user_id):
+def post_favourite_vehicle(vehicle_id, user_id):
     response_body = {}
 
     # Check if User exists
@@ -873,21 +973,22 @@ def post_favourite_vehicle(vehicle_id,user_id):
     if user == None:
         response_body["msg"] = f"User with id {user_id} doesn't exist"
         return jsonify(response_body), 404
-    
+
     # Check if Person exists
     vehicle = Vehicles.query.get(vehicle_id)
     if vehicle == None:
         response_body["msg"] = f"Vehicle with id {vehicle_id} doesn't exist"
         return jsonify(response_body), 404
-    
+
     # Check if person favourites already exist with the same user.
-    vehicle_user= Favourites_vehicles.query.filter_by(user_id=user_id,vehicles_id=vehicle_id).first()  # AND FILTER
+    vehicle_user = Favourites_vehicles.query.filter_by(
+        user_id=user_id, vehicles_id=vehicle_id).first()  # AND FILTER
 
     if vehicle_user != None:
         response_body["msg"] = f"User {user.user_name} with favorite vehicle {vehicle.name} already exist"
         return jsonify(response_body), 400
 
-    favourite=Favourites_vehicles(user_id=user_id,vehicles_id=vehicle_id)
+    favourite = Favourites_vehicles(user_id=user_id, vehicles_id=vehicle_id)
 
     db.session.add(favourite)
     db.session.commit()
@@ -896,8 +997,10 @@ def post_favourite_vehicle(vehicle_id,user_id):
     return jsonify(response_body), 200
 
 # POST PLANET FAVORITE
+
+
 @app.route('/favorite/planet/<int:planet_id>/<int:user_id>', methods=['POST'])
-def post_favourite_planet(planet_id,user_id):
+def post_favourite_planet(planet_id, user_id):
     response_body = {}
 
     # Check if User exists
@@ -905,21 +1008,22 @@ def post_favourite_planet(planet_id,user_id):
     if user == None:
         response_body["msg"] = f"User with id {user_id} doesn't exist"
         return jsonify(response_body), 404
-    
+
     # Check if Person exists
     planet = Planets.query.get(planet_id)
     if planet == None:
         response_body["msg"] = f"Planets with id {planet_id} doesn't exist"
         return jsonify(response_body), 404
-    
+
     # Check if person favourites already exist with the same user.
-    planet_user= Favourites_planets.query.filter_by(user_id=user_id,planets_id=planet_id).first()  # AND FILTER
+    planet_user = Favourites_planets.query.filter_by(
+        user_id=user_id, planets_id=planet_id).first()  # AND FILTER
 
     if planet_user != None:
         response_body["msg"] = f"User {user.user_name} with favorite planet {planet.name} already exist"
         return jsonify(response_body), 400
 
-    favourite=Favourites_planets(user_id=user_id,planets_id=planet_id)
+    favourite = Favourites_planets(user_id=user_id, planets_id=planet_id)
 
     db.session.add(favourite)
     db.session.commit()
@@ -928,8 +1032,10 @@ def post_favourite_planet(planet_id,user_id):
     return jsonify(response_body), 200
 
 # DELETE PERSON FAVORITE
+
+
 @app.route('/favorite/people/<int:people_id>/<int:user_id>', methods=['DELETE'])
-def delete_favourite_people(people_id,user_id):
+def delete_favourite_people(people_id, user_id):
     response_body = {}
 
     # Check if User exists
@@ -937,14 +1043,15 @@ def delete_favourite_people(people_id,user_id):
     if user == None:
         response_body["msg"] = f"User with id {user_id} doesn't exist"
         return jsonify(response_body), 404
-    
+
     # Check if Person exists
     person = People.query.get(people_id)
     if person == None:
         response_body["msg"] = f"Person with id {people_id} doesn't exist"
         return jsonify(response_body), 404
 
-    person_user= Favourites_people.query.filter_by(user_id=user_id,person_id=people_id).first()
+    person_user = Favourites_people.query.filter_by(
+        user_id=user_id, person_id=people_id).first()
     if person_user == None:
         response_body["msg"] = f"Favorite person {person.name} with user {user.user_name} doesn't exist"
         return jsonify(response_body), 404
@@ -952,12 +1059,14 @@ def delete_favourite_people(people_id,user_id):
     db.session.delete(person_user)
     db.session.commit()
 
-    response_body["msg"]="Ok"
-    return jsonify(response_body),200
+    response_body["msg"] = "Ok"
+    return jsonify(response_body), 200
 
 # DELETE VEHICLE FAVORITE
+
+
 @app.route('/favorite/vehicle/<int:vehicle_id>/<int:user_id>', methods=['DELETE'])
-def delete_favourite_vehicle(vehicle_id,user_id):
+def delete_favourite_vehicle(vehicle_id, user_id):
     response_body = {}
 
     # Check if User exists
@@ -965,14 +1074,15 @@ def delete_favourite_vehicle(vehicle_id,user_id):
     if user == None:
         response_body["msg"] = f"User with id {user_id} doesn't exist"
         return jsonify(response_body), 404
-    
+
     # Check if Person exists
     vehicle = Vehicles.query.get(vehicle_id)
     if vehicle == None:
         response_body["msg"] = f"Vehicle with id {vehicle_id} doesn't exist"
         return jsonify(response_body), 404
 
-    vehicle_user= Favourites_vehicles.query.filter_by(user_id=user_id,vehicles_id=vehicle_id).first()
+    vehicle_user = Favourites_vehicles.query.filter_by(
+        user_id=user_id, vehicles_id=vehicle_id).first()
     if vehicle_user == None:
         response_body["msg"] = f"Favorite vehicle {vehicle.name} with user {user.user_name} doesn't exist"
         return jsonify(response_body), 404
@@ -980,12 +1090,14 @@ def delete_favourite_vehicle(vehicle_id,user_id):
     db.session.delete(vehicle_user)
     db.session.commit()
 
-    response_body["msg"]="Ok"
-    return jsonify(response_body),200
+    response_body["msg"] = "Ok"
+    return jsonify(response_body), 200
 
 # DELETE PLANET FAVORITE
+
+
 @app.route('/favorite/planet/<int:planet_id>/<int:user_id>', methods=['DELETE'])
-def delete_favourite_planet(planet_id,user_id):
+def delete_favourite_planet(planet_id, user_id):
     response_body = {}
 
     # Check if User exists
@@ -993,14 +1105,15 @@ def delete_favourite_planet(planet_id,user_id):
     if user == None:
         response_body["msg"] = f"User with id {user_id} doesn't exist"
         return jsonify(response_body), 404
-    
+
     # Check if Person exists
     planet = Planets.query.get(planet_id)
     if planet == None:
         response_body["msg"] = f"Planet with id {planet_id} doesn't exist"
         return jsonify(response_body), 404
 
-    planet_user= Favourites_planets.query.filter_by(user_id=user_id,planets_id=planet_id).first()
+    planet_user = Favourites_planets.query.filter_by(
+        user_id=user_id, planets_id=planet_id).first()
     if planet_user == None:
         response_body["msg"] = f"Favorite planet {planet.name} with user {user.user_name} doesn't exist"
         return jsonify(response_body), 404
@@ -1008,8 +1121,9 @@ def delete_favourite_planet(planet_id,user_id):
     db.session.delete(planet_user)
     db.session.commit()
 
-    response_body["msg"]="Ok"
-    return jsonify(response_body),200
+    response_body["msg"] = "Ok"
+    return jsonify(response_body), 200
+
 
 # this only runs if `$ python src/app.py` is executed
 if __name__ == '__main__':
