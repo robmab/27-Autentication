@@ -127,6 +127,21 @@ def login():
 
     return jsonify(response_body), 200
 
+# PRIVATE
+
+
+@app.route('/private', methods=["GET"])
+@jwt_required()
+def private():
+
+    current_user = get_jwt_identity()
+
+    user = Users.query.get(current_user)
+
+    return jsonify({"msg": f"Logged in as {user.name}",
+                    "response": user.serialize()}), 200
+
+
 # GET ALL ENDPOINTS
 # USERS
 
@@ -900,6 +915,7 @@ def modify_planets(id):
 
 # GET USER FAVOURITES
 @app.route('/users/favorites/<int:id>', methods=['GET'])
+@jwt_required()
 def get_favourites(id):
     response_body = {}
 
@@ -930,6 +946,7 @@ def get_favourites(id):
 
 # POST PERSON FAVORITE
 @app.route('/favorite/people/<int:people_id>/<int:user_id>', methods=['POST'])
+@jwt_required()
 def post_favourite_person(people_id, user_id):
     response_body = {}
 
@@ -965,6 +982,7 @@ def post_favourite_person(people_id, user_id):
 
 
 @app.route('/favorite/vehicle/<int:vehicle_id>/<int:user_id>', methods=['POST'])
+@jwt_required()
 def post_favourite_vehicle(vehicle_id, user_id):
     response_body = {}
 
@@ -1000,6 +1018,7 @@ def post_favourite_vehicle(vehicle_id, user_id):
 
 
 @app.route('/favorite/planet/<int:planet_id>/<int:user_id>', methods=['POST'])
+@jwt_required()
 def post_favourite_planet(planet_id, user_id):
     response_body = {}
 
@@ -1035,6 +1054,7 @@ def post_favourite_planet(planet_id, user_id):
 
 
 @app.route('/favorite/people/<int:people_id>/<int:user_id>', methods=['DELETE'])
+@jwt_required()
 def delete_favourite_people(people_id, user_id):
     response_body = {}
 
@@ -1066,6 +1086,7 @@ def delete_favourite_people(people_id, user_id):
 
 
 @app.route('/favorite/vehicle/<int:vehicle_id>/<int:user_id>', methods=['DELETE'])
+@jwt_required()
 def delete_favourite_vehicle(vehicle_id, user_id):
     response_body = {}
 
@@ -1097,6 +1118,7 @@ def delete_favourite_vehicle(vehicle_id, user_id):
 
 
 @app.route('/favorite/planet/<int:planet_id>/<int:user_id>', methods=['DELETE'])
+@jwt_required()
 def delete_favourite_planet(planet_id, user_id):
     response_body = {}
 
