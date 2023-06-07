@@ -100,12 +100,11 @@ def login():
     r = request.get_json(force=True)
 
     # Check password & username|email
-    if "user_name" in r:
-        user = Users.query.filter_by(user_name=r["user_name"]).first()
-    elif "email" in r:
-        user = Users.query.filter_by(email=r["email"]).first()
+    if "email" in r:
+        user = Users.query.filter((Users.user_name == r["email"]) | (
+            Users.email == r["email"])).first()
     else:
-        return jsonify({"msg": "Username or email not found"}), 400
+        return jsonify({"msg": "Email property not found"}), 400
 
     if user is None:
         return jsonify({"msg": "User not found on database"}), 401
@@ -123,7 +122,7 @@ def login():
 
     response_body = {"msg": "Ok",
                      "token": access_token,
-                     "user_id": user.id}
+                     "user": user.serialize()}
 
     return jsonify(response_body), 200
 
