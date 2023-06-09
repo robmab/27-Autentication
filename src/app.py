@@ -12,6 +12,8 @@ from models import db, Users, Favourites_people, People, Vehicles, Favourites_ve
 
 from flask_jwt_extended import create_access_token, get_jwt_identity, jwt_required, JWTManager
 from flask_bcrypt import Bcrypt
+import datetime
+
 
 # from models import Person
 
@@ -84,8 +86,8 @@ def signup():
     # Encrypt password
     pw_hash = bcrypt.generate_password_hash(password).decode("utf-8")
 
-    user = Users(user_name=user_name, first_name=first_name,
-                 last_name=last_name, email=email, password=pw_hash)
+    user = Users(user_name=user_name.capitalize(), first_name=first_name.capitalize(),
+                 last_name=last_name.capitalize(), email=email.capitalize(), password=pw_hash)
 
     db.session.add(user)
     db.session.commit()
@@ -101,8 +103,8 @@ def login():
 
     # Check password & username|email
     if "email" in r:
-        user = Users.query.filter((Users.user_name == r["email"]) | (
-            Users.email == r["email"])).first()
+        user = Users.query.filter((Users.user_name == r["email"].capitalize()) | (
+            Users.email == r["email"].capitalize())).first()
     else:
         return jsonify({"msg": "Email property not found"}), 400
 
@@ -118,7 +120,8 @@ def login():
         return jsonify({"msg": "Incorrect password"}), 401
 
     # Create Access Token
-    access_token = create_access_token(identity=user.id)
+
+    access_token = create_access_token(identity=user.id, expires_delta =datetime.timedelta(days=1))
 
     response_body = {"msg": "Ok",
                      "token": access_token,
@@ -137,7 +140,10 @@ def private():
 
     user = Users.query.get(current_user)
 
-    return jsonify({"msg": f"Logged in as {user.name}",
+    if user == None:
+        return jsonify({"msg": "User not found"}),404
+
+    return jsonify({"msg": f"Logged in as {user.user_name}",
                     "response": user.serialize()}), 200
 
 
