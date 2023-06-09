@@ -59,11 +59,13 @@ def sitemap():
 
 @app.route('/signup', methods=['POST'])
 def signup():
-    user_name = request.json.get("user_name", None)
+    user_name = request.json.get("user_name", None).replace(" ", "")
     first_name = request.json.get("first_name", None)
     last_name = request.json.get("last_name", None)
-    email = request.json.get("email", None)
+    email = request.json.get("email", None).replace(" ", "")
     password = request.json.get("password", None)
+
+    
 
     # Check if properties of user exist
     if user_name is None:
@@ -103,8 +105,8 @@ def login():
 
     # Check password & username|email
     if "email" in r:
-        user = Users.query.filter((Users.user_name == r["email"].capitalize()) | (
-            Users.email == r["email"].capitalize())).first()
+        user = Users.query.filter((Users.user_name == r["email"].replace(" ", "").capitalize()) | (
+            Users.email == r["email"].replace(" ", "").capitalize())).first()
     else:
         return jsonify({"msg": "Email property not found"}), 400
 
