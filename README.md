@@ -1,6 +1,6 @@
 # REST Star Wars User Security Endpoints
 
-![Proyecto sin título](https://github.com/robmab/SW_Security_Endpoints/assets/56076087/f6620008-e641-4634-bd54-5f7557dc4dba)
+![Proyecto sin título](https://github.com/robmab/SW_Security_Endpoints/assets/56076087/3ed986dc-18ef-4715-839b-121063bfbb7f)
 
 ### Features
 - Signup
